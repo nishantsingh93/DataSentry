@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datasentry-config
+  namespace: datasentry
+data:
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  API_PREFIX: "/api/v1"
+  LOG_LEVEL: "INFO"
+  ELASTICSEARCH_URL: "http://elasticsearch:9200"
+  ELASTICSEARCH_INDEX: "datasentry-logs"
+  REDIS_URL: "redis://redis:6379"
+  PII_DETECTION_THRESHOLD: "0.8"
+  ENABLE_CUSTOM_PATTERNS: "true"
+  ENABLE_NER_MODELS: "true"
+  DEFAULT_ACTION: "mask"
+  POLICY_CONFIG_PATH: "/app/config/policies.yaml"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: datasentry-policies
+  namespace: datasentry
+data:
+  policies.yaml: |
+    default_policy:
+      action: "mask"
+      confidence_threshold: 0.8
+      
+    entity_policies:
+      EMAIL:
+        action: "mask"
+        confidence_threshold: 0.9
+        mask_type: "partial"
+        
+      PHONE_NUMBER:
+        action: "mask"
+        confidence_threshold: 0.8
+        mask_type: "partial"
+        
+      US_SSN:
+        action: "block"
+        confidence_threshold: 0.7
+        
+      CREDIT_CARD:
+        action: "block"
+        confidence_threshold: 0.8
+        
+      PERSON:
+        action: "warn"
+        confidence_threshold: 0.8
+        
+      LOCATION:
+        action: "warn"
+        confidence_threshold: 0.7
+        
+      IP_ADDRESS:
+        action: "mask"
+        confidence_threshold: 0.9
+        mask_type: "full"
+        
+      API_KEY:
+        action: "block"
+        confidence_threshold: 0.9
+    
+    role_overrides:
+      admin:
+        can_override: true
+        bypass_entities: ["PERSON", "LOCATION"]
+        
+      developer:
+        can_override: false
+        bypass_entities: []
+        
+      analyst:
+        can_override: true
+        bypass_entities: ["LOCATION"]
+    
+    business_rules:
+      max_pii_entities_per_request: 5
+      max_confidence_score_threshold: 0.95
+      require_approval_for_high_risk: true
+      log_all_detections: true

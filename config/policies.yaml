@@ -1,0 +1,78 @@
+default_policy:
+  action: "mask"  # block, warn, mask, allow
+  confidence_threshold: 0.8
+  
+entity_policies:
+  EMAIL:
+    action: "mask"
+    confidence_threshold: 0.9
+    mask_type: "partial"  # full, partial, synthetic
+    
+  PHONE_NUMBER:
+    action: "mask"
+    confidence_threshold: 0.8
+    mask_type: "partial"
+    
+  US_SSN:
+    action: "block"
+    confidence_threshold: 0.7
+    
+  CREDIT_CARD:
+    action: "block"
+    confidence_threshold: 0.8
+    
+  PERSON:
+    action: "warn"
+    confidence_threshold: 0.8
+    
+  LOCATION:
+    action: "warn"
+    confidence_threshold: 0.7
+    
+  IP_ADDRESS:
+    action: "mask"
+    confidence_threshold: 0.9
+    mask_type: "full"
+    
+  URL:
+    action: "warn"
+    confidence_threshold: 0.8
+    
+  AWS_ACCESS_KEY:
+    action: "block"
+    confidence_threshold: 0.9
+    
+  API_KEY:
+    action: "block"
+    confidence_threshold: 0.9
+    
+  PASSWORD:
+    action: "block"
+    confidence_threshold: 0.8
+
+role_overrides:
+  admin:
+    can_override: true
+    bypass_entities: ["PERSON", "LOCATION"]
+    
+  developer:
+    can_override: false
+    bypass_entities: []
+    
+  analyst:
+    can_override: true
+    bypass_entities: ["LOCATION"]
+
+business_rules:
+  max_pii_entities_per_request: 5
+  max_confidence_score_threshold: 0.95
+  require_approval_for_high_risk: true
+  log_all_detections: true
+  
+alert_settings:
+  enable_real_time_alerts: true
+  alert_on_blocked_requests: true
+  alert_threshold: 10  # alerts per hour
+  notification_channels:
+    - email
+    - slack
