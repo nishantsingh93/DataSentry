@@ -347,20 +347,3 @@ async def update_policies(policies: Dict[str, Any]):
         raise HTTPException(status_code=500, detail=f"Failed to update policies: {str(e)}")
 
 
-@router.exception_handler(Exception)
-async def general_exception_handler(request, exc):
-    """General exception handler"""
-    await audit_logger.log_error_event(
-        error_type="unhandled_exception",
-        error_message=str(exc),
-        request_path=str(request.url)
-    )
-    
-    return JSONResponse(
-        status_code=500,
-        content=ErrorResponse(
-            error="internal_server_error",
-            message="An unexpected error occurred",
-            details={"exception": str(exc)}
-        ).dict()
-    )
