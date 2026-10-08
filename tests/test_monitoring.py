@@ -1,4 +1,5 @@
 import pytest
+pytest.importorskip("prometheus_client")
 import time
 import asyncio
 from unittest.mock import Mock, patch, AsyncMock

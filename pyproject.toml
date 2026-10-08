@@ -8,20 +8,37 @@ version = "0.1.0"
 description = "PII Guardrail Tool for AI Agent Interactions"
 authors = [{name = "DataSentry Team"}]
 readme = "README.md"
-requires-python = ">=3.8"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.104,<1",
+    "uvicorn>=0.24,<1",
+    "presidio-analyzer>=2.2.354,<3",
+    "presidio-anonymizer>=2.2.354,<3",
+    "pydantic>=2.5,<3",
+    "pydantic-settings>=2,<3",
+    "aiohttp>=3.9,<4",
+    "structlog>=23,<27",
+    "elasticsearch>=8,<10",
+    "pyyaml>=6,<7",
+    "spacy>=3.7,<4",
+    "psutil>=5.9,<8",
+    "click>=8,<9",
+    "python-dotenv>=1,<2",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
 ]
 
 [project.scripts]
 datasentry = "datasentry.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["datasentry*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

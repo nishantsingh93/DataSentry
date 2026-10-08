@@ -1,4 +1,6 @@
 import pytest
+for optional_package in ("aioredis", "diskcache", "torch", "sentence_transformers", "passlib", "prometheus_client"):
+    pytest.importorskip(optional_package)
 import asyncio
 import json
 from unittest.mock import Mock, patch, AsyncMock

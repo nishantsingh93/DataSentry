@@ -7,14 +7,16 @@ from .models import (
     DetectionRequest, DetectionResponse, PIIEntity,
     MaskingRequest, MaskingResponse,
     SanitizeRequest, SanitizeResponse, ActionType,
-    ProxyRequest, ProxyResponse,
-    HealthResponse, ErrorResponse
+    ProxyRequest,
+    HealthResponse, ErrorResponse, RewriteRequest, RewriteResponse
 )
 from ..detection.detector import PIIDetector
 from ..masking.anonymizer import PIIMasker, PIIRedactor
 from ..policies.engine import PolicyEngine
 from ..logging.audit_logger import AuditLogger
 from ..core.config import settings
+from ..rewrite import RewriteService, RewriteBlocked, RewriteUnavailable
+from ..providers import ProviderNotConfigured
 
 # Initialize core components
 detector = PIIDetector(
@@ -271,53 +273,36 @@ async def sanitize_text(request: SanitizeRequest):
         raise HTTPException(status_code=500, detail=f"Sanitization failed: {str(e)}")
 
 
-@router.post("/proxy", response_model=ProxyResponse)
+@router.post("/proxy", deprecated=True)
 async def proxy_ai_request(request: ProxyRequest, api_key: str = Depends(verify_api_key)):
-    """Proxy requests to AI services with PII sanitization"""
-    start_time = time.time()
-    
+    """Retired: the old generic proxy could forward requests without safe redaction."""
+    raise HTTPException(status_code=410, detail="Generic proxy retired; use /rewrite")
+
+
+@router.post("/rewrite", response_model=RewriteResponse)
+async def rewrite_text(request: RewriteRequest, api_key: str = Depends(verify_api_key)):
+    """Redact PII locally, then ask the selected provider to rewrite safe text."""
+    started = time.time()
+    service = RewriteService(detector=detector, masker=masker, policy_engine=policy_engine)
     try:
-        from ..proxy.ai_proxy import AIProxy
-        
-        proxy = AIProxy(
-            detector=detector,
-            masker=masker,
-            policy_engine=policy_engine,
-            audit_logger=audit_logger
-        )
-        
-        response = await proxy.proxy_request(
-            target_url=request.target_url,
-            method=request.method,
-            headers=request.headers,
-            payload=request.payload,
-            sanitize_request=request.sanitize_request,
-            sanitize_response=request.sanitize_response,
-            policy_name=request.policy_name
-        )
-        
-        processing_time = (time.time() - start_time) * 1000
-        
-        return ProxyResponse(
-            response_data=response["data"],
-            status_code=response["status_code"],
-            headers=response["headers"],
-            sanitization_applied=response["sanitization_applied"],
-            pii_detected=response["pii_detected"],
-            detected_entities=[
-                PIIEntity(**entity) for entity in response.get("detected_entities", [])
-            ],
-            processing_time_ms=processing_time
-        )
-        
-    except Exception as e:
-        processing_time = (time.time() - start_time) * 1000
-        await audit_logger.log_error_event(
-            error_type="proxy_error",
-            error_message=str(e),
-            processing_time_ms=processing_time
-        )
-        raise HTTPException(status_code=500, detail=f"Proxy request failed: {str(e)}")
+        result = await service.rewrite(request.text, request.tone, request.provider)
+    except RewriteBlocked as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ProviderNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RewriteUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await audit_logger.log_sanitization_event(
+        action_taken="rewrite",
+        policy_name="default",
+        user_role="api",
+        entities_detected=result.detected_entity_count,
+        risk_score=result.risk_score,
+        processing_time_ms=(time.time() - started) * 1000,
+    )
+    return RewriteResponse(**vars(result))
 
 
 @router.get("/policies", dependencies=[Depends(verify_api_key)])
@@ -345,5 +330,3 @@ async def update_policies(policies: Dict[str, Any]):
             error_message=str(e)
         )
         raise HTTPException(status_code=500, detail=f"Failed to update policies: {str(e)}")
-
-

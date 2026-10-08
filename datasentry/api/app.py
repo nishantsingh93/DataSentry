@@ -23,8 +23,8 @@ def create_app() -> FastAPI:
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure appropriately for production
-        allow_credentials=True,
+        allow_origins=[],
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -84,7 +84,7 @@ def create_app() -> FastAPI:
             content=ErrorResponse(
                 error="internal_server_error",
                 message="An unexpected error occurred",
-                details={"exception": str(exc)}
+                details=None
             ).dict()
         )
     

@@ -1,4 +1,6 @@
 import pytest
+pytest.importorskip("torch")
+pytest.importorskip("sentence_transformers")
 import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 from datasentry.ml.semantic_detector import (

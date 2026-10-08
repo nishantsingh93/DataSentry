@@ -11,6 +11,9 @@ from .detection.detector import PIIDetector
 from .masking.anonymizer import PIIMasker
 from .policies.engine import PolicyEngine
 from .logging.audit_logger import AuditLogger
+from .rewrite import RewriteService, RewriteBlocked, RewriteUnavailable
+from .providers import available_providers, get_provider
+from .core.config import settings
 
 
 @click.group()
@@ -211,6 +214,45 @@ def sanitize(text, file, policy, role, bypass_high_risk):
         click.echo(f"\n✅ Content approved")
         click.echo("-" * 40)
         click.echo(text)
+
+
+@cli.command()
+@click.argument('text', required=False)
+@click.option('--file', '-f', type=click.Path(exists=True, dir_okay=False), help='Read text from a file')
+@click.option('--tone', type=click.Choice(['clear', 'professional', 'friendly']), default='clear')
+@click.option('--provider', help='Provider ID (defaults to LLM_PROVIDER)')
+@click.option('--show-sanitized', is_flag=True, help='Show exactly what is sent to the provider')
+def rewrite(text, file, tone, provider, show_sanitized):
+    """Rewrite text through the PII guardrail and selected LLM provider."""
+    if file:
+        text = Path(file).read_text()
+    elif text is None:
+        text = click.get_text_stream('stdin').read()
+    if not text or not text.strip():
+        raise click.ClickException('No text provided')
+
+    try:
+        result = asyncio.run(RewriteService().rewrite(text, tone, provider))
+    except (RewriteBlocked, RewriteUnavailable, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if show_sanitized:
+        click.echo(f"[INPUT: sanitized text sent to {result.provider}]")
+        click.echo(f"{result.sent_to_provider}\n")
+        click.echo("[OUTPUT: rewritten text]")
+    click.echo(result.rewritten_text)
+
+
+@cli.command()
+def providers():
+    """List available LLM providers and whether each is configured."""
+    for name in available_providers():
+        try:
+            selected = get_provider(name)
+            status = "API key set (model access untested)" if selected.configured else "missing API key"
+            default = " (default)" if name == settings.llm_provider else ""
+            click.echo(f"{name}: {status}; model={selected.model}{default}")
+        except (ValueError, AttributeError, ImportError) as exc:
+            click.echo(f"{name}: invalid plugin ({exc})")
 
 
 @cli.command()

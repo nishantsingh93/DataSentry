@@ -1,0 +1,8 @@
+-r requirements.txt
+pytest>=7,<9
+pytest-asyncio>=0.21,<2
+httpx>=0.25,<1
+pytest-cov>=4,<8
+flake8>=6,<8
+black>=23,<27
+isort>=5,<7

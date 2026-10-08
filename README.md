@@ -1,344 +1,140 @@
-# DataSentry: PII Guardrail Tool for AI Agent Interactions
+# DataSentry
 
-DataSentry is a comprehensive solution for detecting, masking, and preventing Personally Identifiable Information (PII) from being inadvertently sent to external AI services. It acts as a security guardrail between your applications and AI APIs, ensuring compliance with privacy regulations and protecting sensitive data.
+DataSentry is an open source PII guardrail for text sent to an AI API. It finds personal information locally, applies a policy, and can rewrite sanitized text with OpenAI, Anthropic Claude, or Google Gemini. The rewrite flow **redacts every detected PII span** before the API call. If nothing is detected, the text is sent unchanged. A request containing high-risk PII such as an SSN is blocked before the API call.
 
-## 🔒 Key Features
+DataSentry uses provider APIs, not the ChatGPT, Claude, or Gemini chat websites. Rewriting requires an API key for the provider you select. Detection, masking, and policy checks work without one.
 
-- **Real-time PII Detection**: Advanced detection using Presidio, custom regex patterns, and NER models
-- **Flexible Masking Options**: Full, partial, synthetic, hash-based, and redaction masking
-- **Policy Enforcement**: Configurable rules with role-based access controls
-- **AI Service Proxy**: Transparent interception of requests to OpenAI, Anthropic, Google, and other AI APIs
-- **Comprehensive Auditing**: Structured logging with Elasticsearch integration
-- **REST API**: Full-featured API for integration with existing systems
-- **CLI Tools**: Command-line utilities for testing and administration
-- **Compliance Reporting**: Built-in reports for regulatory compliance
+## Try it in five minutes
 
-## 🚀 Quick Start
+Requires Python 3.10+ and an API key from one supported provider. From a clone of this repository:
 
-### Installation
-
-1. **Clone the repository:**
 ```bash
-git clone https://github.com/your-org/DataSentry.git
-cd DataSentry
-```
-
-2. **Run the setup script:**
-```bash
-python setup.py
-```
-
-This will:
-- Install Python dependencies
-- Download required spaCy models
-- Create necessary directories
-- Set up configuration files
-
-3. **Configure environment:**
-```bash
+python3 -m venv .venv
+source .venv/bin/activate              # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
 cp .env.example .env
-# Edit .env with your settings
 ```
 
-### Basic Usage
-
-#### Start the API Server
-```bash
-python -m datasentry.cli serve --host 0.0.0.0 --port 8000
-```
-
-#### Test PII Detection
-```bash
-# Via CLI
-echo "My email is john.doe@example.com" | python -m datasentry.cli detect
-
-# Via API
-curl -X POST "http://localhost:8000/api/v1/detect" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "My SSN is 123-45-6789"}'
-```
-
-#### Mask PII in Text
-```bash
-# Via CLI
-echo "Call me at (555) 123-4567" | python -m datasentry.cli mask --mask-type partial
-
-# Via API
-curl -X POST "http://localhost:8000/api/v1/mask" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "My credit card is 4532-1234-5678-9012", "detect_first": true}'
-```
-
-## 📚 API Documentation
-
-Once the server is running, visit:
-- **Interactive API Docs**: http://localhost:8000/docs
-- **ReDoc Documentation**: http://localhost:8000/redoc
-
-### Core Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/detect` | POST | Detect PII in text |
-| `/api/v1/mask` | POST | Mask PII in text |
-| `/api/v1/sanitize` | POST | Apply policy-based sanitization |
-| `/api/v1/proxy` | POST | Proxy requests to AI services |
-| `/api/v1/health` | GET | Health check |
-| `/api/v1/policies` | GET/PUT | Manage policies |
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Key configuration options in `.env`:
+Open `.env`, set `LLM_PROVIDER` to `openai`, `anthropic`, or `gemini`, paste the matching API key, and change `ADMIN_API_KEY` to a private value. Then:
 
 ```bash
-# API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
-SECRET_KEY=your-secret-key-here
-ADMIN_API_KEY=your-admin-api-key-here
-
-# Detection Configuration
-PII_DETECTION_THRESHOLD=0.8
-ENABLE_CUSTOM_PATTERNS=true
-ENABLE_NER_MODELS=true
-
-# Logging Configuration
-LOG_LEVEL=INFO
-ELASTICSEARCH_URL=http://localhost:9200
-ELASTICSEARCH_INDEX=datasentry-logs
-
-# AI Provider Keys (for proxy functionality)
-OPENAI_API_KEY=your-openai-key
-ANTHROPIC_API_KEY=your-anthropic-key
+python -m datasentry.cli providers
+python -m datasentry.cli rewrite \
+  "Please make this clearer: Contact Jane at jane@example.com tomorrow." \
+  --tone professional --show-sanitized
 ```
 
-### Policy Configuration
+`--show-sanitized` prints exactly what DataSentry sends to the selected provider. With the default provider, the expected shape is:
 
-Edit `config/policies.yaml` to customize PII handling policies:
+```text
+[INPUT: sanitized text sent to openai]
+Please make this clearer: Contact [REDACTED_PERSON] at [REDACTED_EMAIL] [REDACTED_DATE_TIME].
 
-```yaml
-default_policy:
-  action: "mask"
-  confidence_threshold: 0.8
-
-entity_policies:
-  EMAIL:
-    action: "mask"
-    confidence_threshold: 0.9
-    mask_type: "partial"
-  
-  US_SSN:
-    action: "block"
-    confidence_threshold: 0.7
-  
-  CREDIT_CARD:
-    action: "block"
-    confidence_threshold: 0.8
-
-role_overrides:
-  admin:
-    can_override: true
-    bypass_entities: ["PERSON", "LOCATION"]
+[OUTPUT: rewritten text]
+Please contact [REDACTED_PERSON] at [REDACTED_EMAIL] on [REDACTED_DATE_TIME].
 ```
 
-## 🎯 Use Cases
+The wording and detected entity types can vary with model and detector versions. The labels appear with `--show-sanitized`; without it, the CLI prints only the rewritten text for piping. The OpenAI adapter sends `store: false` to the Responses API. The model never receives the removed value; it cannot rewrite facts that were redacted.
 
-### 1. AI Agent Proxy
-
-Intercept and sanitize requests to AI services:
-
-```python
-import requests
-
-# Instead of calling AI service directly:
-# response = requests.post("https://api.openai.com/v1/chat/completions", ...)
-
-# Route through DataSentry proxy:
-response = requests.post("http://localhost:8000/api/v1/proxy", json={
-    "target_url": "https://api.openai.com/v1/chat/completions",
-    "payload": {
-        "model": "gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": "My SSN is 123-45-6789, help me with taxes"}]
-    },
-    "sanitize_request": True,
-    "policy_name": "default"
-}, headers={"X-API-Key": "your-admin-key"})
-```
-
-### 2. Text Sanitization Pipeline
-
-```python
-from datasentry.detection.detector import PIIDetector
-from datasentry.masking.anonymizer import PIIMasker
-from datasentry.policies.engine import PolicyEngine
-
-detector = PIIDetector()
-masker = PIIMasker()
-policy_engine = PolicyEngine()
-
-text = "Contact John at john@example.com or call (555) 123-4567"
-
-# Detect PII
-detection_result = detector.detect_pii(text)
-
-# Apply policy
-policy_decision = policy_engine.evaluate_policy(detection_result)
-
-if policy_decision.action == "mask":
-    masking_result = masker.mask_pii(detection_result, policy_decision.masking_config)
-    sanitized_text = masking_result.masked_text
-elif policy_decision.action == "block":
-    raise Exception("Content blocked due to PII")
-```
-
-### 3. Compliance Monitoring
+Switch providers per request without changing the default:
 
 ```bash
-# Generate PII detection report
-python -m datasentry.cli report \
-  --start-date 2024-01-01 \
-  --end-date 2024-01-31 \
-  --report-type detections \
-  --output compliance_report.json
+python -m datasentry.cli rewrite "Contact jane@example.com" --provider anthropic --show-sanitized
+python -m datasentry.cli rewrite "Contact jane@example.com" --provider gemini --show-sanitized
 ```
 
-## 🧪 Testing
+Each command needs its provider's key in `.env`. `providers` reports which adapters have a key set without printing keys; it does not check model access. The model can be changed with `OPENAI_MODEL`, `ANTHROPIC_MODEL`, or `GEMINI_MODEL`. OpenAI's `gpt-5-mini` may require [organization verification](https://help.openai.com/en/articles/10910291-api-organization-verification); the tested quick-start default is `gpt-4o-mini`.
 
-Run the test suite:
+### Run the HTTP API
 
 ```bash
-# Install test dependencies
-pip install pytest pytest-asyncio
+python -m datasentry.cli serve --host 127.0.0.1 --port 8000
+```
 
-# Run all tests
+Open <http://127.0.0.1:8000/docs> to explore the API. A rewrite request uses the local API key from `.env`:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/rewrite \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: YOUR_ADMIN_API_KEY' \
+  -d '{"text":"Please make this clearer: Contact Jane at jane@example.com tomorrow.","tone":"professional","provider":"gemini"}'
+```
+
+The response contains `rewritten_text`, `sent_to_provider`, `detected_entity_types`, `provider`, and `model`. It does not echo the original text. Omit `provider` to use `LLM_PROVIDER`. Replace `YOUR_ADMIN_API_KEY` with the value you set in `.env`. The endpoint returns 422 for blocked PII or invalid options, 503 for a missing provider key, and 502 for an upstream error.
+
+### Docker
+
+After copying and editing `.env`, run:
+
+```bash
+docker compose up --build
+```
+
+The API is bound to `127.0.0.1:8000` on your computer. Docker is optional; it is not needed for the Python quick start. Redis, Elasticsearch, and a database are not required for the core flow.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[CLI or local HTTP client] --> B[DataSentry]
+    B --> C[Presidio and custom patterns]
+    C --> D{Policy decision}
+    D -->|Block| E[No provider request]
+    D -->|Allow or mask| F[Redact every detected span]
+    F --> G{Selected provider adapter}
+    G --> O[OpenAI]
+    G --> C2[Claude]
+    G --> G2[Gemini]
+    O --> H[Scan and redact model output]
+    C2 --> H
+    G2 --> H
+    H --> A
+    B -. HTTP API .-> I[Local audit log: counts and actions]
+```
+
+1. [The detector](datasentry/detection/detector.py) combines Presidio's recognizers with [custom regex patterns](datasentry/detection/patterns.py), then removes overlapping matches.
+2. [The policy engine](datasentry/policies/engine.py) uses [config/policies.yaml](config/policies.yaml). The rewrite path always blocks when the policy says `block` and redacts **all** detected spans before any provider call, even if a general masking policy would use partial masking.
+3. [The rewrite service](datasentry/rewrite.py) resolves an adapter from [the provider registry](datasentry/providers/__init__.py) and passes it sanitized text. Each built-in adapter calls its fixed API endpoint and parses its response. The service scans model output before returning it.
+4. [The API](datasentry/api/routes.py) exposes `/rewrite` and the existing detection, masking, sanitization, health, and policy endpoints. The CLI uses the same rewrite service without requiring a server.
+
+The older generic `/proxy` endpoint now returns HTTP 410 because it could forward arbitrary requests without reliably redacting nested content. Use `/rewrite` for this workflow.
+
+## Detection without an API key
+
+```bash
+python -m datasentry.cli detect "My email is jane@example.com"
+python -m datasentry.cli sanitize "My SSN is 123-45-6789"
+```
+
+You can also call `POST /api/v1/detect`, `/mask`, and `/sanitize`. These diagnostic endpoints return the original input and detected values to the **local caller**, so protect access if you deploy the API beyond localhost.
+
+## Configuration
+
+| Setting | Purpose |
+| --- | --- |
+| `LLM_PROVIDER` | Default rewrite adapter: `openai`, `anthropic`, or `gemini`. |
+| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Set the key for each provider you use; keys stay on the server or CLI host. |
+| `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL` | Model for each adapter; defaults are in `.env.example`. |
+| `ADMIN_API_KEY` | Required in `X-API-Key` for `/rewrite`, `/proxy`, and `/policies`. |
+| `POLICY_CONFIG_PATH` | YAML policy file; default `./config/policies.yaml`. |
+| `ELASTICSEARCH_URL` | Optional audit destination; unset by default. |
+
+`.env` and runtime logs are ignored by Git. Do not put real PII or API keys in issues, examples, tests, or screenshots. DataSentry is a best-effort detector: false negatives are possible, and a missed value could reach the selected provider. Review detection behavior and policies for your own data before relying on it for sensitive workloads. The demo does not restore redacted values into the answer.
+
+## Plugin structure
+
+The layout follows the same separation used by `career-ops`: one [portable agent skill](.agents/skills/datasentry/SKILL.md) guides the workflow; [provider modules](datasentry/providers) handle external APIs; local keys live in `.env`. See [architecture](docs/ARCHITECTURE.md) and [adding a provider](docs/ADDING_A_PROVIDER.md) for the adapter contract and third-party entry points. A provider plugin runs as Python code in the DataSentry process, so install only plugins you trust.
+
+## Development and contributions
+
+```bash
+pip install -r requirements-dev.txt
 pytest
-
-# Run specific test file
-pytest tests/test_detection.py
-
-# Run with coverage
-pytest --cov=datasentry tests/
 ```
 
-## 🔍 Supported PII Types
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance. The code is licensed under [MIT](LICENSE). The fuller experimental dependency list is kept in [requirements-full.txt](requirements-full.txt); the default requirements install only what the core API and CLI need.
 
-DataSentry can detect and handle the following PII types:
+## Provider API references
 
-- **Contact Information**: Email addresses, phone numbers
-- **Government IDs**: Social Security Numbers, passport numbers, driver's licenses
-- **Financial**: Credit card numbers, bank account numbers
-- **Technical**: IP addresses, AWS access keys, API keys, passwords
-- **Personal**: Person names, locations, organizations
-- **Business Sensitive**: Internal emails, employee IDs, project codes
-
-## 📊 Monitoring & Observability
-
-### Audit Logging
-
-All PII detection and handling events are logged with structured data:
-
-```json
-{
-  "timestamp": "2024-01-15T10:30:00Z",
-  "event_type": "detection",
-  "event_id": "uuid-here",
-  "details": {
-    "entities_detected": 2,
-    "risk_score": 0.85,
-    "processing_time_ms": 45.2
-  }
-}
-```
-
-### Elasticsearch Integration
-
-If configured, logs are automatically sent to Elasticsearch for analysis and dashboards.
-
-### Compliance Reports
-
-Generate reports for:
-- PII detection statistics
-- Blocked requests
-- Policy violations
-- User activity
-
-## 🛠️ Development
-
-### Project Structure
-
-```
-DataSentry/
-├── datasentry/
-│   ├── api/           # FastAPI application
-│   ├── detection/     # PII detection engine
-│   ├── masking/       # PII masking/anonymization
-│   ├── policies/      # Policy enforcement
-│   ├── proxy/         # AI service proxy
-│   ├── logging/       # Audit logging
-│   └── core/          # Configuration and utilities
-├── tests/             # Test suite
-├── config/            # Configuration files
-├── docs/              # Documentation
-└── requirements.txt   # Dependencies
-```
-
-### Adding New PII Patterns
-
-1. Edit `datasentry/detection/patterns.py`
-2. Add new regex patterns to `CustomPIIPatterns.PATTERNS`
-3. Update policy configuration in `config/policies.yaml`
-4. Add tests in `tests/test_detection.py`
-
-### Extending Masking Methods
-
-1. Implement new masking logic in `datasentry/masking/anonymizer.py`
-2. Update `MaskingType` enum
-3. Add configuration options
-4. Write tests
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Make your changes and add tests
-4. Run the test suite: `pytest`
-5. Commit your changes: `git commit -m 'Add amazing feature'`
-6. Push to the branch: `git push origin feature/amazing-feature`
-7. Open a Pull Request
-
-## 📋 Roadmap
-
-- [ ] **Dashboard Interface**: Web-based management interface
-- [ ] **IDE Plugins**: VSCode and IntelliJ extensions
-- [ ] **SDK Libraries**: Python, JavaScript, and Go client libraries
-- [ ] **Advanced ML Models**: Custom NER models for domain-specific PII
-- [ ] **Vector Database Integration**: Context-aware PII detection
-- [ ] **Cloud Provider Integrations**: AWS Macie, Google DLP API
-- [ ] **Kubernetes Deployment**: Helm charts and operators
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Documentation**: Check the `/docs` endpoint when running the API
-- **Issues**: Report bugs on [GitHub Issues](https://github.com/your-org/DataSentry/issues)
-- **Discussions**: Join our [GitHub Discussions](https://github.com/your-org/DataSentry/discussions)
-
-## ⚖️ Legal & Compliance
-
-DataSentry is designed to help with GDPR, CCPA, HIPAA, and other privacy regulation compliance, but **you are responsible for ensuring your use meets all applicable legal requirements**. This tool provides technical capabilities but does not constitute legal advice.
-
-## 🙏 Acknowledgments
-
-- [Microsoft Presidio](https://github.com/microsoft/presidio) for PII detection framework
-- [spaCy](https://spacy.io/) for natural language processing
-- [FastAPI](https://fastapi.tiangolo.com/) for the web framework
-- The open-source community for inspiration and feedback
-
----
-
-**DataSentry** - Protecting privacy in the age of AI 🛡️
+The built-in adapters follow the official [OpenAI Responses API](https://developers.openai.com/api/docs/guides/text), [Anthropic Messages API](https://platform.claude.com/docs/en/api/messages/create), and [Gemini generateContent API](https://ai.google.dev/api/generate-content). Model availability depends on your provider account; change the model in `.env` if needed.

@@ -23,15 +23,17 @@ install:
 
 # Full setup
 setup:
-	python setup.py
+	$(MAKE) install
+	@test -f .env || cp .env.example .env
+	@echo "Edit .env and set OPENAI_API_KEY before using rewrite"
 
 # Run tests
 test:
-	pytest tests/ -v
+	pytest -v
 
 # Run tests with coverage
 test-coverage:
-	pytest tests/ -v --cov=datasentry --cov-report=html --cov-report=term
+	pytest -v --cov=datasentry --cov-report=html --cov-report=term
 
 # Lint code
 lint:
@@ -97,8 +99,7 @@ docker-run:
 
 # Install development dependencies
 install-dev:
-	pip install -r requirements.txt
-	pip install pytest pytest-asyncio pytest-cov flake8 black isort
+	pip install -r requirements-dev.txt
 
 # Run all checks (lint, test, etc.)
 check: lint test

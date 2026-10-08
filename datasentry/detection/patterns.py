@@ -42,6 +42,7 @@ class CustomPIIPatterns:
         ],
         PIIType.CREDIT_CARD: [
             re.compile(r'\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b'),
+            re.compile(r'\b(?:\d{4}[- ]?){3}\d{4}\b'),
         ],
         PIIType.IP_ADDRESS: [
             re.compile(r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'),

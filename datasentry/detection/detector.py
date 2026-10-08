@@ -43,22 +43,22 @@ class PIIDetector:
     
     def _setup_presidio_analyzer(self):
         """Setup Presidio analyzer with NLP models"""
+        if not self.enable_ner_models:
+            self.analyzer = None
+            return
         try:
-            if self.enable_ner_models:
-                # Configure NLP engine (using spaCy)
-                configuration = {
-                    "nlp_engine_name": "spacy",
-                    "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
-                }
-                nlp_engine_provider = NlpEngineProvider(nlp_configuration=configuration)
-                nlp_engine = nlp_engine_provider.create_engine()
-                
-                self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
-            else:
-                self.analyzer = AnalyzerEngine()
+            configuration = {
+                "nlp_engine_name": "spacy",
+                "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+            }
+            nlp_engine_provider = NlpEngineProvider(nlp_configuration=configuration)
+            nlp_engine = nlp_engine_provider.create_engine()
+            self.analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
         except Exception as e:
-            # Fallback to basic analyzer without advanced NLP
-            self.analyzer = AnalyzerEngine()
+            raise RuntimeError(
+                "Presidio needs the spaCy English model. Run: "
+                "python -m spacy download en_core_web_sm"
+            ) from e
     
     def detect_pii(self, text: str, language: str = "en") -> DetectionResult:
         """
@@ -124,7 +124,8 @@ class PIIDetector:
             
             for result in results:
                 detection = PIIDetection(
-                    entity_type=result.entity_type,
+                    # Presidio names emails EMAIL_ADDRESS; our policies use EMAIL.
+                    entity_type={"EMAIL_ADDRESS": "EMAIL"}.get(result.entity_type, result.entity_type),
                     start=result.start,
                     end=result.end,
                     confidence=result.score,

@@ -1,4 +1,6 @@
 import pytest
+pytest.importorskip("aioredis")
+pytest.importorskip("diskcache")
 import asyncio
 from unittest.mock import Mock, patch, AsyncMock
 from datasentry.detection.async_detector import (

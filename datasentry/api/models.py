@@ -82,6 +82,20 @@ class SanitizeResponse(BaseModel):
     processing_time_ms: float
 
 
+class RewriteRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=10000, description="Text to rewrite after PII redaction")
+    tone: str = Field(default="clear", pattern="^(clear|professional|friendly)$")
+    provider: Optional[str] = Field(default=None, pattern="^[a-z][a-z0-9_-]*$", description="LLM provider; defaults to LLM_PROVIDER")
+
+
+class RewriteResponse(BaseModel):
+    rewritten_text: str
+    sent_to_provider: str
+    detected_entity_types: List[str]
+    provider: str
+    model: str
+
+
 class ProxyRequest(BaseModel):
     target_url: str = Field(..., description="AI service URL to proxy to")
     method: str = Field(default="POST", description="HTTP method")

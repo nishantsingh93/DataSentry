@@ -149,7 +149,7 @@ class TestSanitizeEndpoint:
     
     def test_sanitize_allow(self, client):
         payload = {
-            "text": "This is safe text with no PII.",
+            "text": "The widget fits inside the box.",
             "policy_name": "default",
             "user_role": "user"
         }
@@ -241,7 +241,9 @@ class TestPoliciesEndpoint:
         response = client.put("/api/v1/policies", json=payload)
         assert response.status_code == 401
     
-    def test_update_policies_authorized(self, client, api_headers):
+    def test_update_policies_authorized(self, client, api_headers, monkeypatch, tmp_path):
+        from datasentry.api.routes import policy_engine
+        monkeypatch.setattr(policy_engine, "config_path", tmp_path / "policies.yaml")
         payload = {
             "test_policy": {
                 "action": "mask",
